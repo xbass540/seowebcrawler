@@ -13,7 +13,6 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
     """Scrapes website for 404 errors and exports to CSV."""
 
     def scrape_process():
-        nonlocal stop_scraping
         random_number = random.randint(1000, 9999)
         filename = f'{base_url[8:]}-404-errors-{random_number}.csv'
         filepath = os.path.join(output_folder, filename)
@@ -26,12 +25,11 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
             article_counter, issues_counter = 1, 0
 
             def scrape_page(url):
-                nonlocal article_counter, issues_counter, stop_scraping
+                nonlocal article_counter, issues_counter
 
-                if stop_scraping():
-                    output_text.insert(tk.END, "Scraping stopped by user.\n")
-                    output_text.see("end")
+                if stop_scraping():   # check stop flag
                     return
+
                 if url in visited_urls:
                     return
                 visited_urls.add(url)
@@ -50,7 +48,7 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
                     output_text.see("end")
                     return
 
-                # ✅ Add this: show progress for pages that are working
+                # ✅ Progress update for valid pages
                 output_text.insert(tk.END, f"Scraping URL: {url}\n")
                 output_text.see("end")
 
@@ -60,6 +58,8 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
                 article_counter += 1
 
                 for link in soup.find_all('a', href=True):
+                    if stop_scraping():   # double-check stop flag
+                        return
                     full_url = urljoin(base_url, link['href'])
                     if base_url in full_url:
                         scrape_page(full_url)
@@ -67,8 +67,13 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
             scrape_page(base_url)
             csv_writer.writerow(['', '', 'Total Pages with Issues:', issues_counter])
 
-        output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
-        messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")
+        # ✅ Print only once at the end
+        if stop_scraping():
+            output_text.insert(tk.END, "\nScraping stopped by user.\n")
+        else:
+            output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
+            messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")
 
+    # Run in background thread
     thread = threading.Thread(target=scrape_process, daemon=True)
     thread.start()
