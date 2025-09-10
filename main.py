@@ -1,66 +1,77 @@
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, filedialog
+from tkinter import ttk
 import os
 from meta_scraper import scrape_meta_descriptions
 from error_scraper import scrape_404_errors
+from image_scraper import scrape_images
 
-stop_flag = False
-output_folder = ""
+tab_state = {
+    'meta': {'stop': False, 'folder': ''},
+    'errors': {'stop': False, 'folder': ''},
+    'images': {'stop': False, 'folder': ''},
+}
 
 
 def ensure_https(url):
     return url if url.startswith(("http://", "https://")) else "https://" + url
 
 
-def select_folder():
-    global output_folder
-    folder = filedialog.askdirectory(title="Select Folder for CSV Export")
+def select_folder_for(tab_key, label_widget):
+    folder = filedialog.askdirectory(title="Select Export Folder")
     if folder:
-        output_folder = folder
-        folder_label.config(text=f"Selected Folder: {output_folder}")
+        tab_state[tab_key]['folder'] = folder
+        label_widget.config(text=f"Export Folder: {folder}")
 
 
-def create_new_folder():
-    global output_folder
-    folder = filedialog.asksaveasfilename(
-        title="Create New Folder", defaultextension=".folder",
-        filetypes=[("Folder", "*.folder")]
-    )
-    if folder:
-        folder_path = os.path.splitext(folder)[0]
-        os.makedirs(folder_path, exist_ok=True)
-        output_folder = folder_path
-        folder_label.config(text=f"Created and Selected: {output_folder}")
 
 
-def stop_scraping():
-    global stop_flag
-    return stop_flag
-
-
-def update_stop_flag():
-    global stop_flag
-    stop_flag = True
+def make_stop_functions(tab_key):
+    def stop_scraping():
+        return tab_state[tab_key]['stop']
+    def update_stop_flag():
+        tab_state[tab_key]['stop'] = True
+    return stop_scraping, update_stop_flag
 
 
 def run_meta_scraper():
-    url = url_entry.get().strip().rstrip("/")
+    url = meta_url_entry.get().strip().rstrip("/")
     url = ensure_https(url)
-    if not url or not output_folder:
-        messagebox.showerror("Error", "Enter URL and select folder first.")
+    folder = tab_state['meta']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
         return
-    output_text.delete(1.0, tk.END)
-    scrape_meta_descriptions(url, output_folder, output_text, stop_scraping, update_stop_flag)
+    # Reset stop flag for this run and wire stop functions
+    tab_state['meta']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('meta')
+    meta_output_text.delete(1.0, tk.END)
+    scrape_meta_descriptions(url, folder, meta_output_text, stop_fn, update_stop_fn)
 
 
 def run_error_scraper():
-    url = url_entry.get().strip().rstrip("/")
+    url = errors_url_entry.get().strip().rstrip("/")
     url = ensure_https(url)
-    if not url or not output_folder:
-        messagebox.showerror("Error", "Enter URL and select folder first.")
+    folder = tab_state['errors']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
         return
-    output_text.delete(1.0, tk.END)
-    scrape_404_errors(url, output_folder, output_text, stop_scraping, update_stop_flag)
+    tab_state['errors']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('errors')
+    errors_output_text.delete(1.0, tk.END)
+    scrape_404_errors(url, folder, errors_output_text, stop_fn, update_stop_fn)
+
+
+def run_image_scraper():
+    url = images_url_entry.get().strip().rstrip("/")
+    url = ensure_https(url)
+    folder = tab_state['images']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
+        return
+    tab_state['images']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('images')
+    images_output_text.delete(1.0, tk.END)
+    scrape_images(url, folder, images_output_text, stop_fn, update_stop_fn)
 
 
 def quit_app():
@@ -70,34 +81,82 @@ def quit_app():
 
 # GUI setup
 root = tk.Tk()
-root.title("Meta Descriptions & 404 Errors Analyzer")
+root.title("SEO Analyzer")
 
-root.rowconfigure(5, weight=1)
-root.columnconfigure(0, weight=1)
+notebook = ttk.Notebook(root)
+notebook.pack(fill='both', expand=True, padx=10, pady=10)
 
-url_label = tk.Label(root, text="Enter Base URL:")
-url_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
-url_entry = tk.Entry(root, width=50)
-url_entry.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+# Meta tab
+meta_tab = ttk.Frame(notebook)
+notebook.add(meta_tab, text='Meta Descriptions')
 
-scrape_meta_button = tk.Button(root, text="Scrape Meta Descriptions", command=run_meta_scraper)
-scrape_meta_button.grid(row=0, column=2, padx=10, pady=5)
-scrape_404_button = tk.Button(root, text="Scrape 404 Errors", command=run_error_scraper)
-scrape_404_button.grid(row=1, column=2, padx=10, pady=5)
+tk.Label(meta_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+meta_url_entry = tk.Entry(meta_tab, width=50)
+meta_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
 
-folder_label = tk.Label(root, text="No folder selected.")
-folder_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-select_folder_button = tk.Button(root, text="Select Folder", command=select_folder)
-select_folder_button.grid(row=2, column=0, padx=10, pady=5, sticky="w")
-create_folder_button = tk.Button(root, text="Create Folder", command=create_new_folder)
-create_folder_button.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+meta_export_label = tk.Label(meta_tab, text="No export folder selected.")
+meta_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+meta_export_btn = tk.Button(meta_tab, text="Export Folder", command=lambda: select_folder_for('meta', meta_export_label))
+meta_export_btn.grid(row=0, column=2, padx=10, pady=5)
 
-output_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, height=20, width=80)
-output_text.grid(row=5, column=0, columnspan=3, padx=10, pady=5, sticky="nsew")
+meta_start_btn = tk.Button(meta_tab, text="Start", command=run_meta_scraper)
+meta_start_btn.grid(row=1, column=2, padx=10, pady=5)
+meta_stop_btn = tk.Button(meta_tab, text="Stop", command=lambda: tab_state.__setitem__('meta', {**tab_state['meta'], 'stop': True}), bg='red', fg='white')
+meta_stop_btn.grid(row=2, column=2, padx=10, pady=5)
 
-stop_button = tk.Button(root, text="Stop", command=update_stop_flag, bg="red", fg="white")
-stop_button.grid(row=6, column=0, padx=10, pady=5, sticky="w")
-quit_button = tk.Button(root, text="Quit", command=quit_app, bg="red", fg="white")
-quit_button.grid(row=6, column=1, padx=10, pady=5, sticky="w")
+meta_output_text = scrolledtext.ScrolledText(meta_tab, wrap=tk.WORD, height=20, width=80)
+meta_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+meta_tab.rowconfigure(3, weight=1)
+meta_tab.columnconfigure(1, weight=1)
+
+# 404 Errors tab
+errors_tab = ttk.Frame(notebook)
+notebook.add(errors_tab, text='404 Errors')
+
+tk.Label(errors_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+errors_url_entry = tk.Entry(errors_tab, width=50)
+errors_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+errors_export_label = tk.Label(errors_tab, text="No export folder selected.")
+errors_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+errors_export_btn = tk.Button(errors_tab, text="Export Folder", command=lambda: select_folder_for('errors', errors_export_label))
+errors_export_btn.grid(row=0, column=2, padx=10, pady=5)
+
+errors_start_btn = tk.Button(errors_tab, text="Start", command=run_error_scraper)
+errors_start_btn.grid(row=1, column=2, padx=10, pady=5)
+errors_stop_btn = tk.Button(errors_tab, text="Stop", command=lambda: tab_state.__setitem__('errors', {**tab_state['errors'], 'stop': True}), bg='red', fg='white')
+errors_stop_btn.grid(row=2, column=2, padx=10, pady=5)
+
+errors_output_text = scrolledtext.ScrolledText(errors_tab, wrap=tk.WORD, height=20, width=80)
+errors_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+errors_tab.rowconfigure(3, weight=1)
+errors_tab.columnconfigure(1, weight=1)
+
+# Images tab
+images_tab = ttk.Frame(notebook)
+notebook.add(images_tab, text='Images')
+
+tk.Label(images_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+images_url_entry = tk.Entry(images_tab, width=50)
+images_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+images_export_label = tk.Label(images_tab, text="No export folder selected.")
+images_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+images_export_btn = tk.Button(images_tab, text="Export Folder", command=lambda: select_folder_for('images', images_export_label))
+images_export_btn.grid(row=0, column=2, padx=10, pady=5)
+
+images_start_btn = tk.Button(images_tab, text="Start", command=run_image_scraper)
+images_start_btn.grid(row=1, column=2, padx=10, pady=5)
+images_stop_btn = tk.Button(images_tab, text="Stop", command=lambda: tab_state.__setitem__('images', {**tab_state['images'], 'stop': True}), bg='red', fg='white')
+images_stop_btn.grid(row=2, column=2, padx=10, pady=5)
+
+images_output_text = scrolledtext.ScrolledText(images_tab, wrap=tk.WORD, height=20, width=80)
+images_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+images_tab.rowconfigure(3, weight=1)
+images_tab.columnconfigure(1, weight=1)
+
+# Global quit button
+quit_button = tk.Button(root, text="Quit", command=quit_app, bg='red', fg='white')
+quit_button.pack(side='left', padx=10, pady=(0, 10))
 
 root.mainloop()

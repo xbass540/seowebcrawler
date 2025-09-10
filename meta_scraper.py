@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urldefrag
 import csv
 import os
 import random
@@ -13,6 +13,8 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
     """Scrapes website for missing meta descriptions and exports to CSV."""
 
     def scrape_process():
+        def normalize_url(u: str) -> str:
+            return urldefrag(u)[0]
         nonlocal stop_scraping
         random_number = random.randint(1000, 9999)
         filename = f'{base_url[8:]}-meta-descriptions-{random_number}.csv'
@@ -31,6 +33,7 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                 if stop_scraping():
                     output_text.insert(tk.END, "Scraping stopped by user.\n")
                     return
+                url = normalize_url(url)
                 if url in visited_urls:
                     return
                 visited_urls.add(url)
@@ -64,11 +67,12 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                         article_counter += 1
 
                 for link in soup.find_all('a', href=True):
-                    full_url = urljoin(base_url, link['href'])
-                    if base_url in full_url:
+                    full_url = normalize_url(urljoin(base_url, link['href']))
+                    base_root = normalize_url(base_url)
+                    if base_root in full_url:
                         scrape_page(full_url)
 
-            scrape_page(base_url)
+            scrape_page(normalize_url(base_url))
             csv_writer.writerow(['', '', 'Total Posts with Issues:', issues_counter])
 
         output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")

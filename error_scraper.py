@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urldefrag
 import csv
 import os
 import random
@@ -13,6 +13,9 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
     """Scrapes website for 404 errors and exports to CSV."""
 
     def scrape_process():
+        def normalize_url(u: str) -> str:
+            return urldefrag(u)[0]
+
         random_number = random.randint(1000, 9999)
         filename = f'{base_url[8:]}-404-errors-{random_number}.csv'
         filepath = os.path.join(output_folder, filename)
@@ -27,6 +30,7 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
             def scrape_page(url):
                 nonlocal article_counter, issues_counter
 
+                url = normalize_url(url)
                 if stop_scraping():   # check stop flag
                     return
 
@@ -60,11 +64,12 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
                 for link in soup.find_all('a', href=True):
                     if stop_scraping():   # double-check stop flag
                         return
-                    full_url = urljoin(base_url, link['href'])
-                    if base_url in full_url:
+                    full_url = normalize_url(urljoin(base_url, link['href']))
+                    base_root = normalize_url(base_url)
+                    if base_root in full_url:
                         scrape_page(full_url)
 
-            scrape_page(base_url)
+            scrape_page(normalize_url(base_url))
             csv_writer.writerow(['', '', 'Total Pages with Issues:', issues_counter])
 
         # ✅ Print only once at the end
