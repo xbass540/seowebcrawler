@@ -25,10 +25,16 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
             csv_writer.writerow(['Post Name', 'Post URL', 'Meta Description', 'Posts with Issues'])
 
             visited_urls = set()
+            # Meta-specific counters
+            total_pages = 0                  # pages crawled
+            pages_missing_meta = 0           # pages where page-level og:description missing
+            pages_with_meta = 0              # pages where og:description present
+            total_article_rows = 0           # number of article rows written
+            article_rows_missing_meta = 0    # article rows with "No description"
             article_counter, issues_counter = 1, 0
 
             def scrape_page(url):
-                nonlocal article_counter, issues_counter, stop_scraping
+                nonlocal article_counter, issues_counter, stop_scraping, total_pages, pages_missing_meta, pages_with_meta, total_article_rows, article_rows_missing_meta
 
                 if stop_scraping():
                     output_text.insert(tk.END, "Scraping stopped by user.\n")
@@ -48,11 +54,16 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                 soup = BeautifulSoup(response.text, 'html.parser')
                 output_text.insert(tk.END, f"Scraping URL: {url}\n")
 
+                # Count this page
+                total_pages += 1
                 meta_tag = soup.find('meta', property="og:description")
                 meta_desc = meta_tag['content'].strip() if meta_tag and meta_tag.get('content') else "No description"
 
                 if meta_desc == "No description":
                     issues_counter += 1
+                    pages_missing_meta += 1
+                else:
+                    pages_with_meta += 1
 
                 for article in soup.find_all('article'):
                     if stop_scraping():
@@ -63,6 +74,9 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                     if link_tag:
                         full_url = urljoin(base_url, link_tag['href'])
                         csv_writer.writerow([headline, full_url, meta_desc, issues_counter])
+                        total_article_rows += 1
+                        if meta_desc == "No description":
+                            article_rows_missing_meta += 1
                         output_text.insert(tk.END, f"# {article_counter}: {headline}\n URL: {full_url}\n Meta: {meta_desc}\n\n")
                         article_counter += 1
 
@@ -74,6 +88,11 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
 
             scrape_page(normalize_url(base_url))
             csv_writer.writerow(['', '', 'Total Posts with Issues:', issues_counter])
+            csv_writer.writerow(['', '', 'Summary - Total Pages Crawled:', total_pages])
+            csv_writer.writerow(['', '', 'Summary - Pages Missing Meta:', pages_missing_meta])
+            csv_writer.writerow(['', '', 'Summary - Pages With Meta:', pages_with_meta])
+            csv_writer.writerow(['', '', 'Summary - Total Article Rows:', total_article_rows])
+            csv_writer.writerow(['', '', 'Summary - Article Rows Missing Meta:', article_rows_missing_meta])
 
         output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
         messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")

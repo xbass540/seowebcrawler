@@ -25,10 +25,12 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
             csv_writer.writerow(['Post Name', 'Post URL', 'Not Found', 'Posts with Issues'])
 
             visited_urls = set()
+            # 404-specific counters
+            total_pages = 0
             article_counter, issues_counter = 1, 0
 
             def scrape_page(url):
-                nonlocal article_counter, issues_counter
+                nonlocal article_counter, issues_counter, total_pages
 
                 url = normalize_url(url)
                 if stop_scraping():   # check stop flag
@@ -37,6 +39,7 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
                 if url in visited_urls:
                     return
                 visited_urls.add(url)
+                total_pages += 1
 
                 try:
                     response = requests.get(url)
@@ -71,6 +74,10 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
 
             scrape_page(normalize_url(base_url))
             csv_writer.writerow(['', '', 'Total Pages with Issues:', issues_counter])
+            # Additional 404-specific summary rows (do not change columns)
+            csv_writer.writerow(['', '', 'Summary - Total Pages Crawled:', total_pages])
+            csv_writer.writerow(['', '', 'Summary - Pages with 404:', issues_counter])
+            csv_writer.writerow(['', '', 'Summary - Pages OK:', max(total_pages - issues_counter, 0)])
 
         # ✅ Print only once at the end
         if stop_scraping():

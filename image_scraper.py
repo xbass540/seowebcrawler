@@ -35,6 +35,11 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
 
             visited_urls = set()
             total_issues_counter = 0
+            # Image-specific counters
+            total_pages = 0               # pages crawled
+            total_images = 0              # total image rows written
+            images_missing_alt = 0        # rows with row_issue == 1
+            images_with_alt = 0           # rows with row_issue == 0
             recorded_images = set()
 
             def get_extension_from_url(url: str) -> str:
@@ -107,6 +112,9 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                     return
                 visited_urls.add(url)
 
+                # Count this page
+                total_pages += 1
+
                 try:
                     response = requests.get(url)
                     response.raise_for_status()
@@ -153,12 +161,16 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                     row_issue = 1 if not alt_text_clean else 0
                     if row_issue:
                         total_issues_counter += 1
+                        images_missing_alt += 1
+                    else:
+                        images_with_alt += 1
 
                     ext = get_extension_from_url(img_src)
 
                     csv_writer.writerow([
                         page_title, url, img_src, alt_text_clean, has_alt_attr, ext, row_issue
                     ])
+                    total_images += 1
 
                 # Follow in-domain links
                 for link in soup.find_all('a', href=True):
@@ -170,8 +182,13 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                         scrape_page(full_url)
 
             scrape_page(normalize_url(base_url))
-            # Summary row at the end
+            # Summary row at the end (keep existing)
             csv_writer.writerow(['', '', '', '', 'Total Images with Alt Issues:', total_issues_counter, ''])
+            # Additional image-specific summary rows (do not change columns)
+            csv_writer.writerow(['', '', '', '', 'Summary - Total Pages Crawled:', total_pages, ''])
+            csv_writer.writerow(['', '', '', '', 'Summary - Total Images Recorded:', total_images, ''])
+            csv_writer.writerow(['', '', '', '', 'Summary - Images Missing Alt:', images_missing_alt, ''])
+            csv_writer.writerow(['', '', '', '', 'Summary - Images With Alt:', images_with_alt, ''])
 
         if stop_scraping():
             output_text.insert(tk.END, "\nScraping stopped by user.\n")
