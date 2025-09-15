@@ -47,7 +47,48 @@ def run_meta_scraper():
     tab_state['meta']['stop'] = False
     stop_fn, update_stop_fn = make_stop_functions('meta')
     meta_output_text.delete(1.0, tk.END)
-    scrape_meta_descriptions(url, folder, meta_output_text, stop_fn, update_stop_fn)
+    # Start indeterminate; switch to determinate on first real progress
+    meta_start_btn.config(state='disabled')
+    meta_progress.config(mode='indeterminate')
+    meta_progress.start(10)
+    meta_first_progress = {'switched': False}
+    meta_last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            meta_progress.stop()
+            meta_start_btn.config(state='normal')
+            try:
+                if not meta_first_progress['switched']:
+                    meta_progress_label.config(text=f"Done ({meta_last_progress['current']}/{max(meta_last_progress['total'], 1)})")
+                else:
+                    meta_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            meta_last_progress['current'] = current
+            meta_last_progress['total'] = total
+            if not meta_first_progress['switched']:
+                if total and total > 1:
+                    meta_progress.stop()
+                    meta_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    meta_first_progress['switched'] = True
+                else:
+                    try:
+                        meta_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                meta_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if meta_first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    meta_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_meta_descriptions(url, folder, meta_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
 def run_error_scraper():
@@ -60,7 +101,54 @@ def run_error_scraper():
     tab_state['errors']['stop'] = False
     stop_fn, update_stop_fn = make_stop_functions('errors')
     errors_output_text.delete(1.0, tk.END)
-    scrape_404_errors(url, folder, errors_output_text, stop_fn, update_stop_fn)
+    errors_start_btn.config(state='disabled')
+    # Start as indeterminate until we have a real total > 1
+    errors_progress.config(mode='indeterminate')
+    errors_progress.start(10)
+    first_progress = {'switched': False}
+    last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            errors_progress.stop()
+            errors_start_btn.config(state='normal')
+            try:
+                if not first_progress['switched']:
+                    # never switched to determinate, likely only base page
+                    errors_progress_label.config(text=f"Done ({last_progress['current']}/{max(last_progress['total'], 1)})")
+                else:
+                    errors_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            # remember last numbers for done message
+            last_progress['current'] = current
+            last_progress['total'] = total
+
+            if not first_progress['switched']:
+                if total and total > 1:
+                    # switch to determinate only when we have more than one URL
+                    errors_progress.stop()
+                    errors_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    first_progress['switched'] = True
+                else:
+                    # keep spinning and show discovering label
+                    try:
+                        errors_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                errors_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            # update percent label
+            try:
+                if first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    errors_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_404_errors(url, folder, errors_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
 def run_image_scraper():
@@ -73,7 +161,47 @@ def run_image_scraper():
     tab_state['images']['stop'] = False
     stop_fn, update_stop_fn = make_stop_functions('images')
     images_output_text.delete(1.0, tk.END)
-    scrape_images(url, folder, images_output_text, stop_fn, update_stop_fn)
+    images_start_btn.config(state='disabled')
+    images_progress.config(mode='indeterminate')
+    images_progress.start(10)
+    images_first_progress = {'switched': False}
+    images_last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            images_progress.stop()
+            images_start_btn.config(state='normal')
+            try:
+                if not images_first_progress['switched']:
+                    images_progress_label.config(text=f"Done ({images_last_progress['current']}/{max(images_last_progress['total'], 1)})")
+                else:
+                    images_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            images_last_progress['current'] = current
+            images_last_progress['total'] = total
+            if not images_first_progress['switched']:
+                if total and total > 1:
+                    images_progress.stop()
+                    images_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    images_first_progress['switched'] = True
+                else:
+                    try:
+                        images_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                images_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if images_first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    images_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_images(url, folder, images_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
 def run_security_scraper():
@@ -86,7 +214,47 @@ def run_security_scraper():
     tab_state['security']['stop'] = False
     stop_fn, update_stop_fn = make_stop_functions('security')
     security_output_text.delete(1.0, tk.END)
-    scrape_security(url, folder, security_output_text, stop_fn, update_stop_fn)
+    security_start_btn.config(state='disabled')
+    security_progress.config(mode='indeterminate')
+    security_progress.start(10)
+    security_first_progress = {'switched': False}
+    security_last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            security_progress.stop()
+            security_start_btn.config(state='normal')
+            try:
+                if not security_first_progress['switched']:
+                    security_progress_label.config(text=f"Done ({security_last_progress['current']}/{max(security_last_progress['total'], 1)})")
+                else:
+                    security_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            security_last_progress['current'] = current
+            security_last_progress['total'] = total
+            if not security_first_progress['switched']:
+                if total and total > 1:
+                    security_progress.stop()
+                    security_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    security_first_progress['switched'] = True
+                else:
+                    try:
+                        security_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                security_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if security_first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    security_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_security(url, folder, security_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
 def quit_app():
@@ -116,13 +284,17 @@ meta_export_btn.grid(row=0, column=2, padx=10, pady=5)
 
 meta_start_btn = tk.Button(meta_tab, text="Start", command=run_meta_scraper)
 meta_start_btn.grid(row=1, column=2, padx=10, pady=5)
-meta_stop_btn = tk.Button(meta_tab, text="Stop", command=lambda: tab_state.__setitem__('meta', {**tab_state['meta'], 'stop': True}), bg='red', fg='white')
+meta_stop_btn = tk.Button(meta_tab, text="Stop", command=lambda: (tab_state.__setitem__('meta', {**tab_state['meta'], 'stop': True}), meta_progress.stop(), meta_start_btn.config(state='normal')), bg='red', fg='white')
 meta_stop_btn.grid(row=2, column=2, padx=10, pady=5)
 
 meta_output_text = scrolledtext.ScrolledText(meta_tab, wrap=tk.WORD, height=20, width=80)
 meta_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
 meta_tab.rowconfigure(3, weight=1)
 meta_tab.columnconfigure(1, weight=1)
+meta_progress = ttk.Progressbar(meta_tab, mode='determinate', length=200)
+meta_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+meta_progress_label = tk.Label(meta_tab, text="0% (0/0)")
+meta_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # 404 Errors tab
 errors_tab = ttk.Frame(notebook)
@@ -139,13 +311,17 @@ errors_export_btn.grid(row=0, column=2, padx=10, pady=5)
 
 errors_start_btn = tk.Button(errors_tab, text="Start", command=run_error_scraper)
 errors_start_btn.grid(row=1, column=2, padx=10, pady=5)
-errors_stop_btn = tk.Button(errors_tab, text="Stop", command=lambda: tab_state.__setitem__('errors', {**tab_state['errors'], 'stop': True}), bg='red', fg='white')
+errors_stop_btn = tk.Button(errors_tab, text="Stop", command=lambda: (tab_state.__setitem__('errors', {**tab_state['errors'], 'stop': True}), errors_progress.stop(), errors_start_btn.config(state='normal')), bg='red', fg='white')
 errors_stop_btn.grid(row=2, column=2, padx=10, pady=5)
 
 errors_output_text = scrolledtext.ScrolledText(errors_tab, wrap=tk.WORD, height=20, width=80)
 errors_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
 errors_tab.rowconfigure(3, weight=1)
 errors_tab.columnconfigure(1, weight=1)
+errors_progress = ttk.Progressbar(errors_tab, mode='determinate', length=200)
+errors_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+errors_progress_label = tk.Label(errors_tab, text="0% (0/0)")
+errors_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # Images tab
 images_tab = ttk.Frame(notebook)
@@ -162,13 +338,17 @@ images_export_btn.grid(row=0, column=2, padx=10, pady=5)
 
 images_start_btn = tk.Button(images_tab, text="Start", command=run_image_scraper)
 images_start_btn.grid(row=1, column=2, padx=10, pady=5)
-images_stop_btn = tk.Button(images_tab, text="Stop", command=lambda: tab_state.__setitem__('images', {**tab_state['images'], 'stop': True}), bg='red', fg='white')
+images_stop_btn = tk.Button(images_tab, text="Stop", command=lambda: (tab_state.__setitem__('images', {**tab_state['images'], 'stop': True}), images_progress.stop(), images_start_btn.config(state='normal')), bg='red', fg='white')
 images_stop_btn.grid(row=2, column=2, padx=10, pady=5)
 
 images_output_text = scrolledtext.ScrolledText(images_tab, wrap=tk.WORD, height=20, width=80)
 images_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
 images_tab.rowconfigure(3, weight=1)
 images_tab.columnconfigure(1, weight=1)
+images_progress = ttk.Progressbar(images_tab, mode='determinate', length=200)
+images_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+images_progress_label = tk.Label(images_tab, text="0% (0/0)")
+images_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # Security tab
 security_tab = ttk.Frame(notebook)
@@ -185,13 +365,17 @@ security_export_btn.grid(row=0, column=2, padx=10, pady=5)
 
 security_start_btn = tk.Button(security_tab, text="Start", command=run_security_scraper)
 security_start_btn.grid(row=1, column=2, padx=10, pady=5)
-security_stop_btn = tk.Button(security_tab, text="Stop", command=lambda: tab_state.__setitem__('security', {**tab_state['security'], 'stop': True}), bg='red', fg='white')
+security_stop_btn = tk.Button(security_tab, text="Stop", command=lambda: (tab_state.__setitem__('security', {**tab_state['security'], 'stop': True}), security_progress.stop(), security_start_btn.config(state='normal')), bg='red', fg='white')
 security_stop_btn.grid(row=2, column=2, padx=10, pady=5)
 
 security_output_text = scrolledtext.ScrolledText(security_tab, wrap=tk.WORD, height=20, width=80)
 security_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
 security_tab.rowconfigure(3, weight=1)
 security_tab.columnconfigure(1, weight=1)
+security_progress = ttk.Progressbar(security_tab, mode='determinate', length=200)
+security_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+security_progress_label = tk.Label(security_tab, text="0% (0/0)")
+security_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # Global quit button
 quit_button = tk.Button(root, text="Quit", command=quit_app, bg='red', fg='white')

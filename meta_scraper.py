@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 
-def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping, update_stop_flag):
+def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping, update_stop_flag, on_complete=None, on_progress=None):
     """Scrapes website for missing meta descriptions and exports to CSV."""
 
     def scrape_process():
@@ -25,6 +25,10 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
             csv_writer.writerow(['Post Name', 'Post URL', 'Meta Description', 'Posts with Issues'])
 
             visited_urls = set()
+            discovered_urls = set()
+            # progress counters
+            total_discovered = 0
+            visited_count = 0
             # Meta-specific counters
             total_pages = 0                  # pages crawled
             pages_missing_meta = 0           # pages where page-level og:description missing
@@ -34,7 +38,7 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
             article_counter, issues_counter = 1, 0
 
             def scrape_page(url):
-                nonlocal article_counter, issues_counter, stop_scraping, total_pages, pages_missing_meta, pages_with_meta, total_article_rows, article_rows_missing_meta
+                nonlocal article_counter, issues_counter, stop_scraping, total_pages, pages_missing_meta, pages_with_meta, total_article_rows, article_rows_missing_meta, visited_count, total_discovered, discovered_urls
 
                 if stop_scraping():
                     output_text.insert(tk.END, "Scraping stopped by user.\n")
@@ -49,6 +53,13 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                     response.raise_for_status()
                 except requests.exceptions.RequestException as e:
                     output_text.insert(tk.END, f"Failed to fetch {url}: {e}\n")
+                    # count this as visited and update progress on error
+                    visited_count += 1
+                    if on_progress:
+                        try:
+                            on_progress(visited_count, max(total_discovered, 1))
+                        except Exception:
+                            pass
                     return
 
                 soup = BeautifulSoup(response.text, 'html.parser')
@@ -84,9 +95,34 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                     full_url = normalize_url(urljoin(base_url, link['href']))
                     base_root = normalize_url(base_url)
                     if base_root in full_url:
+                        if full_url not in discovered_urls and full_url not in visited_urls:
+                            discovered_urls.add(full_url)
+                            total_discovered += 1
+                            if on_progress:
+                                try:
+                                    on_progress(visited_count, max(total_discovered, 1))
+                                except Exception:
+                                    pass
                         scrape_page(full_url)
 
-            scrape_page(normalize_url(base_url))
+                # after parsing and discovering links, mark this page as visited for progress
+                visited_count += 1
+                if on_progress:
+                    try:
+                        on_progress(visited_count, max(total_discovered, 1))
+                    except Exception:
+                        pass
+
+            # seed discovered with base url and start
+            base_norm = normalize_url(base_url)
+            discovered_urls.add(base_norm)
+            total_discovered = 1
+            if on_progress:
+                try:
+                    on_progress(0, total_discovered)
+                except Exception:
+                    pass
+            scrape_page(base_norm)
             csv_writer.writerow(['', '', 'Total Posts with Issues:', issues_counter])
             csv_writer.writerow(['', '', 'Summary - Total Pages Crawled:', total_pages])
             csv_writer.writerow(['', '', 'Summary - Pages Missing Meta:', pages_missing_meta])
@@ -96,6 +132,22 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
 
         output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
         messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")
+        if on_complete:
+            try:
+                on_complete()
+            except Exception:
+                pass
 
-    thread = threading.Thread(target=scrape_process, daemon=True)
+    def wrapped_process():
+        try:
+            scrape_process()
+        finally:
+            # In case the function returned early due to stop, ensure on_complete is called
+            if on_complete:
+                try:
+                    on_complete()
+                except Exception:
+                    pass
+
+    thread = threading.Thread(target=wrapped_process, daemon=True)
     thread.start()

@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 
-def scrape_images(base_url, output_folder, output_text, stop_scraping, update_stop_flag):
+def scrape_images(base_url, output_folder, output_text, stop_scraping, update_stop_flag, on_complete=None, on_progress=None):
     """Scrapes the website for <img> tags and exports their data to CSV.
 
     Columns exported:
@@ -41,6 +41,10 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
             images_missing_alt = 0        # rows with row_issue == 1
             images_with_alt = 0           # rows with row_issue == 0
             recorded_images = set()
+            # progress tracking
+            discovered_urls = set()
+            total_discovered = 0
+            visited_count = 0
 
             def get_extension_from_url(url: str) -> str:
                 try:
@@ -103,7 +107,7 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                 return urldefrag(u)[0]
 
             def scrape_page(url):
-                nonlocal total_issues_counter
+                nonlocal total_issues_counter, visited_count, total_discovered, discovered_urls, total_pages, total_images, images_missing_alt, images_with_alt
 
                 if stop_scraping():
                     return
@@ -121,6 +125,13 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                 except requests.exceptions.RequestException as e:
                     output_text.insert(tk.END, f"Failed to fetch {url}: {e}\n")
                     output_text.see('end')
+                    # count this as visited and update progress on error
+                    visited_count += 1
+                    if on_progress:
+                        try:
+                            on_progress(visited_count, max(total_discovered, 1))
+                        except Exception:
+                            pass
                     return
 
                 soup = BeautifulSoup(response.text, 'html.parser')
@@ -179,9 +190,34 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                     full_url = normalize_url(urljoin(base_url, link['href']))
                     base_root = normalize_url(base_url)
                     if base_root in full_url:
+                        if full_url not in discovered_urls and full_url not in visited_urls:
+                            discovered_urls.add(full_url)
+                            total_discovered += 1
+                            if on_progress:
+                                try:
+                                    on_progress(visited_count, max(total_discovered, 1))
+                                except Exception:
+                                    pass
                         scrape_page(full_url)
 
-            scrape_page(normalize_url(base_url))
+                # after parsing and discovering links, mark this page as visited for progress
+                visited_count += 1
+                if on_progress:
+                    try:
+                        on_progress(visited_count, max(total_discovered, 1))
+                    except Exception:
+                        pass
+
+            # seed discovered with base url
+            base_norm = normalize_url(base_url)
+            discovered_urls.add(base_norm)
+            total_discovered = 1
+            if on_progress:
+                try:
+                    on_progress(0, total_discovered)
+                except Exception:
+                    pass
+            scrape_page(base_norm)
             # Summary row at the end (keep existing)
             csv_writer.writerow(['', '', '', '', 'Total Images with Alt Issues:', total_issues_counter, ''])
             # Additional image-specific summary rows (do not change columns)
@@ -195,6 +231,21 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
         else:
             output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
             messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")
+        if on_complete:
+            try:
+                on_complete()
+            except Exception:
+                pass
 
-    thread = threading.Thread(target=scrape_process, daemon=True)
+    def wrapped_process():
+        try:
+            scrape_process()
+        finally:
+            if on_complete:
+                try:
+                    on_complete()
+                except Exception:
+                    pass
+
+    thread = threading.Thread(target=wrapped_process, daemon=True)
     thread.start()
