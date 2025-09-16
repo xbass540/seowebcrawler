@@ -6,12 +6,14 @@ from meta_scraper import scrape_meta_descriptions
 from error_scraper import scrape_404_errors
 from image_scraper import scrape_images
 from security_scraper import scrape_security
+from page_titles_scraper import scrape_page_titles
 
 tab_state = {
     'meta': {'stop': False, 'folder': ''},
     'errors': {'stop': False, 'folder': ''},
     'images': {'stop': False, 'folder': ''},
     'security': {'stop': False, 'folder': ''},
+    'titles': {'stop': False, 'folder': ''},
 }
 
 
@@ -257,6 +259,59 @@ def run_security_scraper():
     scrape_security(url, folder, security_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
+def run_titles_scraper():
+    url = titles_url_entry.get().strip().rstrip("/")
+    url = ensure_https(url)
+    folder = tab_state['titles']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
+        return
+    tab_state['titles']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('titles')
+    titles_output_text.delete(1.0, tk.END)
+    titles_start_btn.config(state='disabled')
+    titles_progress.config(mode='indeterminate')
+    titles_progress.start(10)
+    titles_first_progress = {'switched': False}
+    titles_last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            titles_progress.stop()
+            titles_start_btn.config(state='normal')
+            try:
+                if not titles_first_progress['switched']:
+                    titles_progress_label.config(text=f"Done ({titles_last_progress['current']}/{max(titles_last_progress['total'], 1)})")
+                else:
+                    titles_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            titles_last_progress['current'] = current
+            titles_last_progress['total'] = total
+            if not titles_first_progress['switched']:
+                if total and total > 1:
+                    titles_progress.stop()
+                    titles_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    titles_first_progress['switched'] = True
+                else:
+                    try:
+                        titles_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                titles_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if titles_first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    titles_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_page_titles(url, folder, titles_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
+
+
 def quit_app():
     root.quit()
     root.destroy()
@@ -376,6 +431,33 @@ security_progress = ttk.Progressbar(security_tab, mode='determinate', length=200
 security_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
 security_progress_label = tk.Label(security_tab, text="0% (0/0)")
 security_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
+
+# Page Titles tab
+titles_tab = ttk.Frame(notebook)
+notebook.add(titles_tab, text='Page Titles')
+
+tk.Label(titles_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+titles_url_entry = tk.Entry(titles_tab, width=50)
+titles_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+titles_export_label = tk.Label(titles_tab, text="No export folder selected.")
+titles_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+titles_export_btn = tk.Button(titles_tab, text="Export Folder", command=lambda: select_folder_for('titles', titles_export_label))
+titles_export_btn.grid(row=0, column=2, padx=10, pady=5)
+
+titles_start_btn = tk.Button(titles_tab, text="Start", command=run_titles_scraper)
+titles_start_btn.grid(row=1, column=2, padx=10, pady=5)
+titles_stop_btn = tk.Button(titles_tab, text="Stop", command=lambda: (tab_state.__setitem__('titles', {**tab_state['titles'], 'stop': True}), titles_progress.stop(), titles_start_btn.config(state='normal')), bg='red', fg='white')
+titles_stop_btn.grid(row=2, column=2, padx=10, pady=5)
+
+titles_output_text = scrolledtext.ScrolledText(titles_tab, wrap=tk.WORD, height=20, width=80)
+titles_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+titles_tab.rowconfigure(3, weight=1)
+titles_tab.columnconfigure(1, weight=1)
+titles_progress = ttk.Progressbar(titles_tab, mode='determinate', length=200)
+titles_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+titles_progress_label = tk.Label(titles_tab, text="0% (0/0)")
+titles_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # Global quit button
 quit_button = tk.Button(root, text="Quit", command=quit_app, bg='red', fg='white')
