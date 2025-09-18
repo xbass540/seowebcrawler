@@ -19,7 +19,10 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
     - Alt Text
     - Has Alt Attribute (Yes/No)
     - Extension (jpg, png, svg, etc.)
-    - Images with Issues (running count of images missing/empty alt)
+    - Alt Too Long (>100) (1/0)
+    - Image Size (KB)
+    - Size Too Large (>100KB) (1/0)
+    - Images with Issues (1 if missing/empty alt OR alt text > 100 chars OR size > 100KB, else 0)
     """
 
     def scrape_process():
@@ -30,7 +33,7 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
         with open(filepath, 'w', newline='', encoding='utf-8') as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow([
-                'Page Title', 'Page URL', 'Image Src', 'Alt Text', 'Has Alt Attribute', 'Extension', 'Images with Issues'
+                'Page Title', 'Page URL', 'Image Src', 'Alt Text', 'Has Alt Attribute', 'Extension', 'Alt Too Long (>100)', 'Image Size (KB)', 'Size Too Large (>100KB)', 'Images with Issues'
             ])
 
             visited_urls = set()
@@ -40,6 +43,9 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
             total_images = 0              # total image rows written
             images_missing_alt = 0        # rows with row_issue == 1
             images_with_alt = 0           # rows with row_issue == 0
+            images_alt_too_long = 0       # rows where alt text length > 100
+            images_size_too_large = 0     # rows where size > 100KB
+            image_size_cache = {}         # cache by image src URL -> size in bytes (int) or None if unknown
             recorded_images = set()
             # progress tracking
             discovered_urls = set()
@@ -103,11 +109,54 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
 
                 return False
 
+            def get_image_size_bytes(abs_url: str):
+                """Attempt to determine image size in bytes.
+                Strategy:
+                 - HEAD request for Content-Length
+                 - If missing, stream GET and stop after exceeding 100KB threshold to avoid large downloads
+                Returns: (size_bytes: int|None, size_too_large: bool)
+                """
+                # Check cache first
+                if abs_url in image_size_cache:
+                    size = image_size_cache[abs_url]
+                    if size is None:
+                        return None, False
+                    return size, size > 100 * 1024
+
+                threshold = 100 * 1024  # 100KB
+                try:
+                    head = requests.head(abs_url, allow_redirects=True, timeout=5)
+                    cl = head.headers.get('Content-Length')
+                    if cl and cl.isdigit():
+                        size_int = int(cl)
+                        image_size_cache[abs_url] = size_int
+                        return size_int, size_int > threshold
+                except requests.RequestException:
+                    pass
+
+                # Fallback: streamed GET with early stop
+                try:
+                    with requests.get(abs_url, stream=True, timeout=10) as r:
+                        r.raise_for_status()
+                        total = 0
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if not chunk:
+                                continue
+                            total += len(chunk)
+                            if total > threshold:
+                                image_size_cache[abs_url] = total
+                                return total, True
+                        image_size_cache[abs_url] = total
+                        return total, total > threshold
+                except requests.RequestException:
+                    image_size_cache[abs_url] = None
+                    return None, False
+
             def normalize_url(u: str) -> str:
                 return urldefrag(u)[0]
 
             def scrape_page(url):
-                nonlocal total_issues_counter, visited_count, total_discovered, discovered_urls, total_pages, total_images, images_missing_alt, images_with_alt
+                nonlocal total_issues_counter, visited_count, total_discovered, discovered_urls, total_pages, total_images, images_missing_alt, images_with_alt, images_alt_too_long, images_size_too_large
 
                 if stop_scraping():
                     return
@@ -168,18 +217,32 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                     alt_text = img.get('alt') if img.has_attr('alt') else ''
                     alt_text_clean = (alt_text or '').strip()
 
-                    # Per-row issue flag: 1 if missing/empty alt, else 0
-                    row_issue = 1 if not alt_text_clean else 0
-                    if row_issue:
-                        total_issues_counter += 1
+                    # Determine issues (alt-related)
+                    is_missing_or_empty = (alt_text_clean == '')
+                    is_too_long = (len(alt_text_clean) > 100) if alt_text_clean else False
+                    if is_missing_or_empty:
                         images_missing_alt += 1
                     else:
+                        # Has some alt text
                         images_with_alt += 1
+                        if is_too_long:
+                            images_alt_too_long += 1
 
                     ext = get_extension_from_url(img_src)
 
+                    # Determine image size
+                    size_bytes, size_too_large = get_image_size_bytes(img_src)
+                    size_kb_display = round(size_bytes / 1024.0, 2) if isinstance(size_bytes, int) else ''
+                    if size_too_large:
+                        images_size_too_large += 1
+
+                    # Per-row issue flag: 1 if any issue (missing/empty alt, alt too long, or size too large)
+                    row_issue = 1 if (is_missing_or_empty or is_too_long or size_too_large) else 0
+                    if row_issue:
+                        total_issues_counter += 1
+
                     csv_writer.writerow([
-                        page_title, url, img_src, alt_text_clean, has_alt_attr, ext, row_issue
+                        page_title, url, img_src, alt_text_clean, has_alt_attr, ext, 1 if is_too_long else 0, size_kb_display, 1 if size_too_large else 0, row_issue
                     ])
                     total_images += 1
 
@@ -219,12 +282,14 @@ def scrape_images(base_url, output_folder, output_text, stop_scraping, update_st
                     pass
             scrape_page(base_norm)
             # Summary row at the end (keep existing)
-            csv_writer.writerow(['', '', '', '', 'Total Images with Alt Issues:', total_issues_counter, ''])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Total Images with Issues:', total_issues_counter])
             # Additional image-specific summary rows (do not change columns)
-            csv_writer.writerow(['', '', '', '', 'Summary - Total Pages Crawled:', total_pages, ''])
-            csv_writer.writerow(['', '', '', '', 'Summary - Total Images Recorded:', total_images, ''])
-            csv_writer.writerow(['', '', '', '', 'Summary - Images Missing Alt:', images_missing_alt, ''])
-            csv_writer.writerow(['', '', '', '', 'Summary - Images With Alt:', images_with_alt, ''])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Total Pages Crawled:', total_pages])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Total Images Recorded:', total_images])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Images Missing Alt:', images_missing_alt])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Images With Alt:', images_with_alt])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Images Alt > 100 chars:', images_alt_too_long])
+            csv_writer.writerow(['', '', '', '', '', '', '', 'Summary - Images Size > 100KB:', images_size_too_large])
 
         if stop_scraping():
             output_text.insert(tk.END, "\nScraping stopped by user.\n")
