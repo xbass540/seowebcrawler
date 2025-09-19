@@ -22,7 +22,11 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
 
         with open(filepath, 'w', newline='', encoding='utf-8') as csv_file:
             csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(['Post Name', 'Post URL', 'Meta Description', 'Posts with Issues'])
+            csv_writer.writerow([
+                'Post Name', 'Post URL', 'Meta Description',
+                'Meta Too Short (<70)', 'Meta Too Long (>155)', 'Duplicate Meta',
+                'Posts with Issues'
+            ])
 
             visited_urls = set()
             discovered_urls = set()
@@ -35,10 +39,15 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
             pages_with_meta = 0              # pages where og:description present
             total_article_rows = 0           # number of article rows written
             article_rows_missing_meta = 0    # article rows with "No description"
-            article_counter, issues_counter = 1, 0
+            articles_too_short = 0           # article rows with meta < 70 chars
+            articles_too_long = 0            # article rows with meta > 155 chars
+            articles_duplicate = 0           # article rows with duplicate meta (non-empty)
+            total_posts_with_issues = 0      # per-row issue counter
+            article_counter = 1
+            meta_seen = set()                # track seen non-empty meta descriptions for duplicates
 
             def scrape_page(url):
-                nonlocal article_counter, issues_counter, stop_scraping, total_pages, pages_missing_meta, pages_with_meta, total_article_rows, article_rows_missing_meta, visited_count, total_discovered, discovered_urls
+                nonlocal article_counter, stop_scraping, total_pages, pages_missing_meta, pages_with_meta, total_article_rows, article_rows_missing_meta, visited_count, total_discovered, discovered_urls, articles_too_short, articles_too_long, articles_duplicate, total_posts_with_issues, meta_seen
 
                 if stop_scraping():
                     output_text.insert(tk.END, "Scraping stopped by user.\n")
@@ -71,7 +80,6 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                 meta_desc = meta_tag['content'].strip() if meta_tag and meta_tag.get('content') else "No description"
 
                 if meta_desc == "No description":
-                    issues_counter += 1
                     pages_missing_meta += 1
                 else:
                     pages_with_meta += 1
@@ -84,10 +92,41 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                     link_tag = article.find('a', href=True)
                     if link_tag:
                         full_url = urljoin(base_url, link_tag['href'])
-                        csv_writer.writerow([headline, full_url, meta_desc, issues_counter])
+                        # Compute per-row checks
+                        no_desc = (meta_desc == "No description")
+                        too_short = (len(meta_desc) < 70) if not no_desc else False
+                        too_long = (len(meta_desc) > 155) if not no_desc else False
+                        is_dup = False
+                        if not no_desc:
+                            meta_key = meta_desc.strip().lower()
+                            if meta_key in meta_seen:
+                                is_dup = True
+                            meta_seen.add(meta_key)
+
+                        row_issue = 1 if (no_desc or too_short or too_long or is_dup) else 0
+
+                        # Update counters
                         total_article_rows += 1
-                        if meta_desc == "No description":
+                        if no_desc:
                             article_rows_missing_meta += 1
+                        if too_short:
+                            articles_too_short += 1
+                        if too_long:
+                            articles_too_long += 1
+                        if is_dup:
+                            articles_duplicate += 1
+                        if row_issue:
+                            total_posts_with_issues += 1
+
+                        # Write row
+                        csv_writer.writerow([
+                            headline, full_url, meta_desc,
+                            1 if too_short else 0,
+                            1 if too_long else 0,
+                            1 if is_dup else 0,
+                            row_issue
+                        ])
+
                         output_text.insert(tk.END, f"# {article_counter}: {headline}\n URL: {full_url}\n Meta: {meta_desc}\n\n")
                         article_counter += 1
 
@@ -123,12 +162,15 @@ def scrape_meta_descriptions(base_url, output_folder, output_text, stop_scraping
                 except Exception:
                     pass
             scrape_page(base_norm)
-            csv_writer.writerow(['', '', 'Total Posts with Issues:', issues_counter])
+            csv_writer.writerow(['', '', 'Total Posts with Issues:', total_posts_with_issues])
             csv_writer.writerow(['', '', 'Summary - Total Pages Crawled:', total_pages])
             csv_writer.writerow(['', '', 'Summary - Pages Missing Meta:', pages_missing_meta])
             csv_writer.writerow(['', '', 'Summary - Pages With Meta:', pages_with_meta])
             csv_writer.writerow(['', '', 'Summary - Total Article Rows:', total_article_rows])
-            csv_writer.writerow(['', '', 'Summary - Article Rows Missing Meta:', article_rows_missing_meta])
+            csv_writer.writerow(['', '', 'Summary - Missing Meta Description:', article_rows_missing_meta])
+            csv_writer.writerow(['', '', 'Summary - Meta Description < 70:', articles_too_short])
+            csv_writer.writerow(['', '', 'Summary - Meta Description > 155:', articles_too_long])
+            csv_writer.writerow(['', '', 'Summary - Duplicate Meta Description:', articles_duplicate])
 
         output_text.insert(tk.END, f"\nScraping complete. Results saved to {filepath}\n")
         messagebox.showinfo("Success", f"Scraping complete! Results saved to {filepath}")
