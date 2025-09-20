@@ -7,6 +7,7 @@ from error_scraper import scrape_404_errors
 from image_scraper import scrape_images
 from security_scraper import scrape_security
 from page_titles_scraper import scrape_page_titles
+from headings_scraper import scrape_h1_headings, scrape_h2_headings
 
 tab_state = {
     'meta': {'stop': False, 'folder': ''},
@@ -14,6 +15,8 @@ tab_state = {
     'images': {'stop': False, 'folder': ''},
     'security': {'stop': False, 'folder': ''},
     'titles': {'stop': False, 'folder': ''},
+    'h1': {'stop': False, 'folder': ''},
+    'h2': {'stop': False, 'folder': ''},
 }
 
 
@@ -312,6 +315,112 @@ def run_titles_scraper():
     scrape_page_titles(url, folder, titles_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
 
 
+def run_h1_scraper():
+    url = h1_url_entry.get().strip().rstrip("/")
+    url = ensure_https(url)
+    folder = tab_state['h1']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
+        return
+    tab_state['h1']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('h1')
+    h1_output_text.delete(1.0, tk.END)
+    h1_start_btn.config(state='disabled')
+    h1_progress.config(mode='indeterminate')
+    h1_progress.start(10)
+    first_progress = {'switched': False}
+    last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            h1_progress.stop()
+            h1_start_btn.config(state='normal')
+            try:
+                if not first_progress['switched']:
+                    h1_progress_label.config(text=f"Done ({last_progress['current']}/{max(last_progress['total'], 1)})")
+                else:
+                    h1_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            last_progress['current'] = current
+            last_progress['total'] = total
+            if not first_progress['switched']:
+                if total and total > 1:
+                    h1_progress.stop()
+                    h1_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    first_progress['switched'] = True
+                else:
+                    try:
+                        h1_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                h1_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    h1_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_h1_headings(url, folder, h1_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
+
+
+def run_h2_scraper():
+    url = h2_url_entry.get().strip().rstrip("/")
+    url = ensure_https(url)
+    folder = tab_state['h2']['folder']
+    if not url or not folder:
+        messagebox.showerror("Error", "Enter URL and select export folder first.")
+        return
+    tab_state['h2']['stop'] = False
+    stop_fn, update_stop_fn = make_stop_functions('h2')
+    h2_output_text.delete(1.0, tk.END)
+    h2_start_btn.config(state='disabled')
+    h2_progress.config(mode='indeterminate')
+    h2_progress.start(10)
+    first_progress = {'switched': False}
+    last_progress = {'current': 0, 'total': 0}
+    def on_complete():
+        def _done():
+            h2_progress.stop()
+            h2_start_btn.config(state='normal')
+            try:
+                if not first_progress['switched']:
+                    h2_progress_label.config(text=f"Done ({last_progress['current']}/{max(last_progress['total'], 1)})")
+                else:
+                    h2_progress_label.config(text='Done')
+            except Exception:
+                pass
+        root.after(0, _done)
+    def on_progress(current, total):
+        def _update():
+            last_progress['current'] = current
+            last_progress['total'] = total
+            if not first_progress['switched']:
+                if total and total > 1:
+                    h2_progress.stop()
+                    h2_progress.config(mode='determinate', maximum=max(total, 1), value=min(current, max(total, 1)))
+                    first_progress['switched'] = True
+                else:
+                    try:
+                        h2_progress_label.config(text=f"Discovering… ({current}/{max(total,1)})")
+                    except Exception:
+                        pass
+            else:
+                h2_progress.config(maximum=max(total, 1), value=min(current, max(total, 1)))
+            try:
+                if first_progress['switched']:
+                    pct = int(100 * (0 if total <= 0 else min(current, total) / max(total, 1)))
+                    h2_progress_label.config(text=f"{pct}% ({current}/{total})")
+            except Exception:
+                pass
+        root.after(0, _update)
+    scrape_h2_headings(url, folder, h2_output_text, stop_fn, update_stop_fn, on_complete=on_complete, on_progress=on_progress)
+
+
 def quit_app():
     root.quit()
     root.destroy()
@@ -458,6 +567,60 @@ titles_progress = ttk.Progressbar(titles_tab, mode='determinate', length=200)
 titles_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
 titles_progress_label = tk.Label(titles_tab, text="0% (0/0)")
 titles_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
+
+# H1 Headings tab
+h1_tab = ttk.Frame(notebook)
+notebook.add(h1_tab, text='H1 Headings')
+
+tk.Label(h1_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+h1_url_entry = tk.Entry(h1_tab, width=50)
+h1_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+h1_export_label = tk.Label(h1_tab, text="No export folder selected.")
+h1_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+h1_export_btn = tk.Button(h1_tab, text="Export Folder", command=lambda: select_folder_for('h1', h1_export_label))
+h1_export_btn.grid(row=0, column=2, padx=10, pady=5)
+
+h1_start_btn = tk.Button(h1_tab, text="Start", command=run_h1_scraper)
+h1_start_btn.grid(row=1, column=2, padx=10, pady=5)
+h1_stop_btn = tk.Button(h1_tab, text="Stop", command=lambda: (tab_state.__setitem__('h1', {**tab_state['h1'], 'stop': True}), h1_progress.stop(), h1_start_btn.config(state='normal')), bg='red', fg='white')
+h1_stop_btn.grid(row=2, column=2, padx=10, pady=5)
+
+h1_output_text = scrolledtext.ScrolledText(h1_tab, wrap=tk.WORD, height=20, width=80)
+h1_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+h1_tab.rowconfigure(3, weight=1)
+h1_tab.columnconfigure(1, weight=1)
+h1_progress = ttk.Progressbar(h1_tab, mode='determinate', length=200)
+h1_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+h1_progress_label = tk.Label(h1_tab, text="0% (0/0)")
+h1_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
+
+# H2 Headings tab
+h2_tab = ttk.Frame(notebook)
+notebook.add(h2_tab, text='H2 Headings')
+
+tk.Label(h2_tab, text="Enter Base URL:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
+h2_url_entry = tk.Entry(h2_tab, width=50)
+h2_url_entry.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+h2_export_label = tk.Label(h2_tab, text="No export folder selected.")
+h2_export_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+h2_export_btn = tk.Button(h2_tab, text="Export Folder", command=lambda: select_folder_for('h2', h2_export_label))
+h2_export_btn.grid(row=0, column=2, padx=10, pady=5)
+
+h2_start_btn = tk.Button(h2_tab, text="Start", command=run_h2_scraper)
+h2_start_btn.grid(row=1, column=2, padx=10, pady=5)
+h2_stop_btn = tk.Button(h2_tab, text="Stop", command=lambda: (tab_state.__setitem__('h2', {**tab_state['h2'], 'stop': True}), h2_progress.stop(), h2_start_btn.config(state='normal')), bg='red', fg='white')
+h2_stop_btn.grid(row=2, column=2, padx=10, pady=5)
+
+h2_output_text = scrolledtext.ScrolledText(h2_tab, wrap=tk.WORD, height=20, width=80)
+h2_output_text.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+h2_tab.rowconfigure(3, weight=1)
+h2_tab.columnconfigure(1, weight=1)
+h2_progress = ttk.Progressbar(h2_tab, mode='determinate', length=200)
+h2_progress.grid(row=4, column=0, padx=10, pady=5, sticky='w')
+h2_progress_label = tk.Label(h2_tab, text="0% (0/0)")
+h2_progress_label.grid(row=4, column=1, padx=10, pady=5, sticky='w')
 
 # Global quit button
 quit_button = tk.Button(root, text="Quit", command=quit_app, bg='red', fg='white')
