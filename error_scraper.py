@@ -48,8 +48,9 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
                 try:
                     response = requests.get(url)
                     if response.status_code == 404:
-                        csv_writer.writerow([f"Article {article_counter}", url, "404 Not Found", issues_counter])
+                        csv_writer.writerow([f"Article {article_counter}", url, "404 Not Found", 1])
                         issues_counter += 1
+                        article_counter += 1
                         output_text.insert(tk.END, f"404 Not Found: {url}\n")
                         output_text.see("end")
                         # count this as visited and update progress before returning
@@ -79,7 +80,7 @@ def scrape_404_errors(base_url, output_folder, output_text, stop_scraping, updat
 
                 soup = BeautifulSoup(response.text, 'html.parser')
                 page_title = soup.find('title').text.strip() if soup.find('title') else "No title"
-                csv_writer.writerow([page_title, url, "Page Found", issues_counter])
+                csv_writer.writerow([page_title, url, "Page Found", 0])
                 article_counter += 1
 
                 for link in soup.find_all('a', href=True):
